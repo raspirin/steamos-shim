@@ -1,0 +1,45 @@
+#!/bin/bash
+
+case "$(basename -- "$0")" in
+    gamescope-session)
+        export GAMESCOPE_MODE_SAVE_FILE="$HOME/.config/gamescope/modes.cfg"
+
+        MANGOAPP_FLAG=""
+        if command -v mangoapp &> /dev/null
+        then
+            MANGOAPP_FLAG="--mangoapp"
+        else
+            printf "[%s] [Info] 'mangoapp' is not available on your system. Check to see that MangoHud is installed.\n" "$0"
+            printf "[%s] [Info] Continuing without the '--mangoapp' flag.\n" "$0"
+        fi
+
+        exec gamescope $MANGOAPP_FLAG -e -- steam -steamdeck -steamos3
+        ;;
+
+    jupiter-biosupdate)
+        echo "No updates configured for this bios"
+        exit 0
+        ;;
+
+    steamos-select-branch)
+        echo "Not applicable for this OS"
+        exit 0
+        ;;
+
+    steamos-session-select)
+        exec steam -shutdown
+        ;;
+
+    steamos-set-timezone)
+        exit 0
+        ;;
+
+    steamos-update)
+        exit 7
+        ;;
+
+    *)
+        printf "%s: unknown command '%s'\n" "${0##*/}" "$(basename -- "$0")" >&2
+        exit 127
+        ;;
+esac
