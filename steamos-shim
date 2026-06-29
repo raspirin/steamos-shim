@@ -1,9 +1,41 @@
 #!/bin/bash
 
+state_file="${XDG_CONFIG_HOME:-$HOME/.config}/steamos-shim/next-session"
+
+write_state_atomic() {
+    local file="$1" content="$2"
+    local dir tmp
+    dir="$(dirname -- "$file")"
+    mkdir -p -- "$dir" || return 1
+    tmp="$(mktemp -- "$file.XXXXXX")" || return 1
+    printf '%s\n' "$content" > "$tmp" || { rm -f -- "$tmp"; return 1; }
+    mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
+}
+
 case "$(basename -- "$0")" in
     gamescope-session)
-        export GAMESCOPE_MODE_SAVE_FILE="$HOME/.config/gamescope/modes.cfg"
+        target="$(cat "$state_file" 2>/dev/null || echo gamescope)"
+        case "$target" in
+            plasma) ;;
+            *) target=gamescope ;;
+        esac
 
+        # Best-effort reset to gamescope; failure does not block session start.
+        write_state_atomic "$state_file" gamescope || true
+
+        if [[ "$target" == plasma ]]; then
+            plasma_entry=/usr/share/wayland-sessions/plasma.desktop
+            exec_cmd="$(awk -F= '/^Exec=/ {sub(/^Exec=/, ""); print; exit}' "$plasma_entry")"
+            # Strip XDG desktop-entry field codes (%U, %F, %i, ...) before exec.
+            exec_cmd="$(printf '%s' "$exec_cmd" | sed -E 's/ ?%[a-zA-Z]//g')"
+            if [[ -z "$exec_cmd" ]]; then
+                printf "%s: plasma session entry missing or malformed at %s\n" "${0##*/}" "$plasma_entry" >&2
+                exit 1
+            fi
+            exec sh -c "$exec_cmd"
+        fi
+
+        export GAMESCOPE_MODE_SAVE_FILE="$HOME/.config/gamescope/modes.cfg"
         MANGOAPP_FLAG=""
         if command -v mangoapp &> /dev/null
         then
@@ -13,7 +45,12 @@ case "$(basename -- "$0")" in
             printf "[%s] [Info] Continuing without the '--mangoapp' flag.\n" "$0"
         fi
 
-        exec gamescope $MANGOAPP_FLAG -e -- steam -steamdeck -steamos3
+        if ! gamescope $MANGOAPP_FLAG -e -- steam -steamdeck -steamos3; then
+            # Self-rescue: write plasma so the next autologin lands the user
+            # somewhere they can investigate.
+            write_state_atomic "$state_file" plasma || true
+            exit 1
+        fi
         ;;
 
     jupiter-biosupdate)
@@ -27,7 +64,20 @@ case "$(basename -- "$0")" in
         ;;
 
     steamos-session-select)
-        exec steam -shutdown
+        arg="${1:-desktop}"
+        case "$arg" in
+            desktop)   target=plasma ;;
+            gamescope) target=gamescope ;;
+            *)
+                printf "usage: %s [desktop|gamescope]\n" "${0##*/}" >&2
+                exit 2
+                ;;
+        esac
+        if ! write_state_atomic "$state_file" "$target"; then
+            printf "%s: failed to write %s\n" "${0##*/}" "$state_file" >&2
+            exit 1
+        fi
+        exec loginctl terminate-session "${XDG_SESSION_ID:?XDG_SESSION_ID not set}"
         ;;
 
     steamos-set-timezone)

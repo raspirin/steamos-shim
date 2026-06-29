@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Return to Gamemode
+Comment=Switch back to Steam Gamemode
+Exec=steamos-session-select gamescope
+Icon=steam
+Terminal=false
+StartupNotify=false
+Categories=Game;

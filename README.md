@@ -8,6 +8,25 @@ The Steam client, when invoked with `-steamdeck -steamos3`, calls out to several
 
 `steamos-shim` is a busybox-style multi-call binary: one real script at `/usr/bin/steamos-shim`, plus symlinks for each name the Steam client expects. The script dispatches on `basename "$0"` and returns whatever the Steam client wants to see (an exit code, a stub message, or — for `gamescope-session` — the actual `gamescope -e -- steam -steamdeck -steamos3` launch).
 
+## Switching between gamescope and Plasma
+
+`steamos-session-select` (the command Steam invokes for "Switch to Desktop") and a "Return to Gamemode" application entry let the user move between gamescope and a Plasma desktop without ever seeing the display manager.
+
+**Precondition: autologin must be configured on your DM.** This package is DM-agnostic — pick SDDM, GDM, plasma-greeter, etc., and configure it to auto-log into your user account. Without autologin, every switch will land the user at the DM login prompt.
+
+**How a switch works.** Both directions go through the same mechanism: a state file at `~/.config/steamos-shim/next-session` records "go to gamescope" or "go to plasma", then `loginctl terminate-session` ends the current session. The DM's autologin re-enters "Steam (Gamescope)", and the dispatcher reads the state file to decide whether to start gamescope or the Plasma session listed at `/usr/share/wayland-sessions/plasma.desktop`. The state file is reset to `gamescope` on every dispatch, so a power cycle from Plasma always returns to game mode.
+
+**Steam in Plasma.** This package does not auto-start Steam inside Plasma. If you want SteamDeck-like behaviour where Steam appears on the desktop, add it via Plasma's own autostart configuration:
+
+> System Settings → Autostart → Add Application → `steam` (optionally `steam -silent`)
+
+**Desktop shortcut for "Return to Gamemode".** The package installs `/usr/share/applications/steamos-return-to-gamescope.desktop`, which appears in the application menu and KRunner. To put it on the Plasma desktop:
+
+```bash
+cp /usr/share/applications/steamos-return-to-gamescope.desktop ~/Desktop/
+chmod +x ~/Desktop/steamos-return-to-gamescope.desktop
+```
+
 ## Files installed
 
 ```
@@ -21,6 +40,7 @@ The Steam client, when invoked with `-steamdeck -steamos3`, calls out to several
 /usr/bin/steamos-polkit-helpers/steamos-set-timezone  -> ../steamos-shim
 /usr/bin/steamos-polkit-helpers/steamos-update        -> ../steamos-shim
 /usr/share/wayland-sessions/steam.desktop             (display-manager entry)
+/usr/share/applications/steamos-return-to-gamescope.desktop  (menu/desktop entry: switch back to gamescope)
 ```
 
 ## Requirements
@@ -52,6 +72,11 @@ sudo pacman -R steamos-shim
 ```
 
 pacman removes every file the package owns, including all symlinks.
+
+The package leaves two user-owned items in place by design:
+
+- `~/.config/steamos-shim/` — the state file recording the next session to dispatch into. Remove manually if you want a fully clean slate.
+- `~/Desktop/steamos-return-to-gamescope.desktop` — only present if you copied it there yourself.
 
 ## Why a shim and not the real scripts?
 

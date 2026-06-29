@@ -1,20 +1,22 @@
 # Maintainer: aspirin <f1193968991@126.com>
 pkgname=steamos-shim
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Multi-call shim that lets non-SteamOS Linux launch Steam in SteamOS mode via Gamescope"
 arch=('any')
 url="https://github.com/raspirin/steamos-shim"
 license=('MIT')
-depends=('bash' 'gamescope' 'steam')
+depends=('bash' 'gamescope' 'steam' 'plasma-workspace')
 optdepends=('mangohud: performance overlay in SteamOS mode'
             'lib32-mangohud: 32-bit performance overlay support')
 conflicts=('gamescope-session-steam'
            'gamescope-session-steam-git')
 source=('steamos-shim'
         'steam.desktop'
+        'steamos-return-to-gamescope.desktop'
         'LICENSE')
 sha256sums=('SKIP'
+            'SKIP'
             'SKIP'
             'SKIP')
 
@@ -49,6 +51,10 @@ package() {
     # Display-manager session entry
     install -Dm644 steam.desktop \
         "$pkgdir/usr/share/wayland-sessions/steam.desktop"
+
+    # Application-menu / desktop entry for switching back to gamescope
+    install -Dm644 steamos-return-to-gamescope.desktop \
+        "$pkgdir/usr/share/applications/steamos-return-to-gamescope.desktop"
 
     # License
     install -Dm644 LICENSE \
