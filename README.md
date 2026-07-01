@@ -14,6 +14,17 @@ The Steam client, when invoked with `-steamdeck -steamos3`, calls out to several
 
 **Precondition: autologin must be configured on your DM.** This package is DM-agnostic — pick SDDM, GDM, plasma-greeter, etc., and configure it to auto-log into your user account. Without autologin, every switch will land the user at the DM login prompt.
 
+> **Example: plasma-login-manager (KDE's SDDM fork).** Drop a file at `/etc/plasmalogin.conf.d/autologin.conf`:
+>
+> ```ini
+> [Autologin]
+> User=YOUR_USERNAME
+> Session=steam.desktop
+> Relogin=true
+> ```
+>
+> `Session=steam.desktop` points at this package's wayland-session entry, so the dispatcher takes over from there. `Relogin=true` is required: every gamescope ↔ Plasma switch goes through `loginctl terminate-session`, and without `Relogin=true` autologin only fires once at boot. Your user must also be in the `autologin` group (`sudo gpasswd -a YOUR_USERNAME autologin`; create the group with `sudo groupadd -r autologin` if it doesn't exist). For upstream SDDM, the same keys live under `/etc/sddm.conf.d/autologin.conf` instead.
+
 **How a switch works.** Both directions go through the same mechanism: a state file at `~/.config/steamos-shim/next-session` records "go to gamescope" or "go to plasma", then `loginctl terminate-session` ends the current session. The DM's autologin re-enters "Steam (Gamescope)", and the dispatcher reads the state file to decide whether to start gamescope or the Plasma session listed at `/usr/share/wayland-sessions/plasma.desktop`. The state file is reset to `gamescope` on every dispatch, so a power cycle from Plasma always returns to game mode.
 
 **Steam in Plasma.** This package does not auto-start Steam inside Plasma. If you want SteamDeck-like behaviour where Steam appears on the desktop, add it via Plasma's own autostart configuration:
