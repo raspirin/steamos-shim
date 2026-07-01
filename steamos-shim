@@ -2,23 +2,28 @@
 
 state_file="${XDG_CONFIG_HOME:-$HOME/.config}/steamos-shim/next-session"
 
+log() { logger -t steamos-shim -- "$*"; }
+
 write_state_atomic() {
     local file="$1" content="$2"
     local dir tmp
     dir="$(dirname -- "$file")"
-    mkdir -p -- "$dir" || return 1
-    tmp="$(mktemp -- "$file.XXXXXX")" || return 1
-    printf '%s\n' "$content" > "$tmp" || { rm -f -- "$tmp"; return 1; }
-    mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; return 1; }
+    mkdir -p -- "$dir" || { log "write_state_atomic: mkdir failed for $dir"; return 1; }
+    tmp="$(mktemp -- "$file.XXXXXX")" || { log "write_state_atomic: mktemp failed near $file"; return 1; }
+    printf '%s\n' "$content" > "$tmp" || { rm -f -- "$tmp"; log "write_state_atomic: write to $tmp failed"; return 1; }
+    mv -f -- "$tmp" "$file" || { rm -f -- "$tmp"; log "write_state_atomic: mv $tmp -> $file failed"; return 1; }
+    log "write_state_atomic: wrote $content to $file"
 }
 
 case "$(basename -- "$0")" in
     gamescope-session)
+        log "entered: gamescope-session (pid=$$, session=$XDG_SESSION_ID, args=[$*])"
         target="$(cat "$state_file" 2>/dev/null || echo gamescope)"
         case "$target" in
             plasma) ;;
             *) target=gamescope ;;
         esac
+        log "gamescope-session: dispatch target=$target"
 
         # Best-effort reset to gamescope; failure does not block session start.
         write_state_atomic "$state_file" gamescope || true
@@ -29,9 +34,11 @@ case "$(basename -- "$0")" in
             # Strip XDG desktop-entry field codes (%U, %F, %i, ...) before exec.
             exec_cmd="$(printf '%s' "$exec_cmd" | sed -E 's/ ?%[a-zA-Z]//g')"
             if [[ -z "$exec_cmd" ]]; then
+                log "gamescope-session: plasma entry missing/malformed at $plasma_entry"
                 printf "%s: plasma session entry missing or malformed at %s\n" "${0##*/}" "$plasma_entry" >&2
                 exit 1
             fi
+            log "gamescope-session: exec plasma via: $exec_cmd"
             exec sh -c "$exec_cmd"
         fi
 
@@ -46,11 +53,14 @@ case "$(basename -- "$0")" in
         fi
 
         if ! gamescope $MANGOAPP_FLAG -e -- steam -steamdeck -steamos3; then
+            rc=$?
+            log "gamescope-session: gamescope exited non-zero ($rc), self-rescuing to plasma"
             # Self-rescue: write plasma so the next autologin lands the user
             # somewhere they can investigate.
             write_state_atomic "$state_file" plasma || true
             exit 1
         fi
+        log "gamescope-session: gamescope exited cleanly"
         ;;
 
     jupiter-biosupdate)
@@ -64,20 +74,33 @@ case "$(basename -- "$0")" in
         ;;
 
     steamos-session-select)
+        log "entered: steamos-session-select (pid=$$, session=${XDG_SESSION_ID:-<unset>}, args=[$*])"
         arg="${1:-desktop}"
         case "$arg" in
             desktop)   target=plasma ;;
             gamescope) target=gamescope ;;
             *)
+                log "steamos-session-select: unknown arg '$arg'"
                 printf "usage: %s [desktop|gamescope]\n" "${0##*/}" >&2
                 exit 2
                 ;;
         esac
+        log "steamos-session-select: arg=$arg -> target=$target"
         if ! write_state_atomic "$state_file" "$target"; then
+            log "steamos-session-select: failed to write state file"
             printf "%s: failed to write %s\n" "${0##*/}" "$state_file" >&2
             exit 1
         fi
-        exec loginctl terminate-session "${XDG_SESSION_ID:?XDG_SESSION_ID not set}"
+        if [[ -z "$XDG_SESSION_ID" ]]; then
+            log "steamos-session-select: XDG_SESSION_ID unset, refusing to terminate"
+            printf "%s: XDG_SESSION_ID not set\n" "${0##*/}" >&2
+            exit 1
+        fi
+        log "steamos-session-select: calling loginctl terminate-session $XDG_SESSION_ID"
+        loginctl_out="$(loginctl terminate-session "$XDG_SESSION_ID" 2>&1)"
+        rc=$?
+        log "steamos-session-select: loginctl returned $rc, output: ${loginctl_out:-<empty>}"
+        exit $rc
         ;;
 
     steamos-set-timezone)
